@@ -1,0 +1,202 @@
+---
+title: "Nightingail"
+author: "Stephen Elston"
+date: "Saturday, July 23, 2016"
+output: html_document
+---
+
+# Do Sanitation Officers Matter?
+
+## Overview and summary
+
+During the Crimean War, at the urging of nurse Florence Nightingale, the British Army introduced sanitation officers to reduce preventable deaths in hospitals. In this document I explore the effectiveness of these sanitation officers. 
+
+Nightingale worked in British Army field hospitals during the Crimean Was. She was shocked by the large number of preventable deaths among British soldiers in hospitals during the first year of the war. In fact, preventable deaths far exceeded the rate of death from combat wounds. At the urging of Nightingale, the British Parliament compelled the Army to introduce sanitation officers in March of 1856. The sanitation officers enforced sanitary practices in the Army hospitals with the goal of reducing preventable deaths.  
+
+Analysis of these data, show that introducing sanitation officers did, in fact, reduce preventable deaths and deaths from other causes. At the 95% level we can reject the null hypothesis that sanitation officers had no effect on the rate of preventable deaths. 
+However, we cannot reject the hypothesis that combat deaths from wounds decreased following the introduction of sanitation officers. 
+
+
+## Load and explore the data set
+
+As a first step load and explore the data.
+
+```{r}
+require(HistData)
+dim(Nightingale)
+summary(Nightingale)
+```
+
+Plot the size of the British Army for 24 months during the war. 
+
+
+```{r}
+require(ggplot2)
+ggplot(Nightingale, aes(Date, Army)) +
+  geom_point(size = 5) + geom_line() +
+  ggtitle('Size of the British Army in the Crimean War') +
+  ylab('Size of Army')
+```
+
+The number of soldiers increased for the most of the duration of the war. 
+
+Next, plot the deaths of soldiers per 1,000 by month for 24 months of the war. The size of the Army is included for reference. 
+
+
+```{r}
+plot.line = function(col, color, ylab){
+  ggplot(Nightingale) + 
+    geom_line(aes_string('Date', col), color = color, size = 2) + ylab(ylab)
+}
+
+plot.Crimea = function(){
+  require(gridExtra)
+  p1 = plot.line("Wounds.rate", 'red', 'Rate of wounds')
+  p1 = p1 + ggtitle('Casualty rates per 1000 by date for Crimean War + size of Army')
+  p2 = plot.line("Other.rate", 'DarkBlue', 'Rate of other')
+  p3 = plot.line("Disease.rate", 'black', 'Rate of disease')
+  p4 = plot.line("Army", 'green', 'Size of Army')
+  grid.arrange(p1, p2, p3, p4, nrow = 4)
+}
+
+plot.Crimea()
+```
+
+There is clearly a problem with these data. The rate of deaths from disease exceeds 1000 per month in January 1855. These data need to be scaled by the size of the army. 
+
+Following normalization of the data, the following plot shows deaths by various causes. 
+
+```{r}
+colsIn = c("Disease", "Wounds", "Other")
+colsOut = c("Disease.rate", "Wounds.rate", "Other.rate")
+Nightingale[, colsOut] = lapply(colsIn, 
+    function(x) 1000 * Nightingale[, x]/Nightingale$Army)
+plot.Crimea()
+```
+
+The data now appear to be correctly normalized. Note that while the size of the Army increased during most of the war the peak death rates from disease and other causes was in early 1855, just prior to the introduction of sanitation officers. 
+
+One gains another view of these data by plotting them on the same scale.
+
+
+```{r}
+ggplot(Nightingale) + 
+  geom_line(aes(Date, Wounds.rate), color = 'red', size = 2) + ylab('Rate of wounds') +
+  geom_line(aes(Date, Other.rate), color = 'DarkBlue', size = 2) + 
+  geom_line(aes(Date, Disease.rate), size = 2) +
+  ggtitle('Rate of casualties vs. Date') +
+  ylab('Rate of casualities')
+```
+
+The death rate from disease, shown in black, far exceeds the death from other causes, shown in blue, and the death rate from combat wounds shown in red. Note that the death rate from disease is in sharp decline in early 1855 and continues to decline for the duration of the war. 
+
+Finally, examine the pairwise scatter plots of the death rates from the various causes and the size of the deployed Army. 
+
+
+```{r}
+pairs(~ Disease.rate + Wounds.rate + Other.rate + Army, data = Nightingale,
+      main = 'Scatter plots of death data for Cirmean War')
+```
+
+There appears to be some relationship between rate of deaths from disease and rate of deaths from other causes. There is no apparent relationship between the size of the Army and the other variables. Nor, is there any no noticeable relationship between deaths from combat wounds and deaths from diseases and other causes. 
+
+## Are there meaningful correlations?
+
+Having investigated some basic relationships in the data, we will look at the correlations between the variables. The following display shows these correlations.
+
+```{r}
+cols = c("Disease.rate", "Wounds.rate", "Other.rate", "Army")
+cors = cor(Nightingale[, cols], method = 'pearson')
+require(corrplot)
+corrplot.mixed(cors, upper = "ellipse")
+```
+
+Deaths from disease and other causes are highly correlated. All other correlations are small.
+
+## Compare casualty rates before and after March 1855
+
+We can now compare the casualty rate before and after the sanitation offices were introduced in March 1856. 
+
+First, examine the differences in the values of preventable deaths from disease for the two time periods. The histogram shows the distribution of values of deaths from disease before and after March 1855. 
+
+
+```{r}
+before = Nightingale[Nightingale$Date <= '1855-03-01', ]
+dim(before)
+after = Nightingale[Nightingale$Date > '1855-03-01', ]
+dim(after)
+```
+
+First, examine the differences in the values of preventable deaths for the two time periods. The histogram shows the distribution of values of deaths from disease before and after March 1855. 
+
+
+```{r}
+plot.t <- function(a, b, cols = c('before', 'after'), nbins = 40, p = 0.05){
+  maxs = max(c(max(a), max(b)))
+  mins = min(c(min(a), min(b)))
+  breaks = seq(maxs, mins, length.out = (nbins + 1))
+  par(mfrow = c(2, 1))
+  hist(a, breaks = breaks, main = paste('Histogram of deaths', cols[1], 'March 1855'), xlab = cols[1])
+  abline(v = mean(a), lwd = 4, col = 'red')
+  abline(v = quantile(a, probs = p/2), lty = 3, col = 'red', lwd = 3)  
+  abline(v = quantile(a, probs = (1 - p/2)), lty = 3, col = 'red', lwd = 3)
+  hist(b, breaks = breaks, main = paste('Histogram of deaths', cols[2], 'March 1855'), xlab = cols[2])
+  abline(v = mean(b), lwd = 4, col = 'red')
+  abline(v = quantile(b, probs = p/2), lty = 3, col = 'red', lwd = 3)  
+  abline(v = quantile(b, probs = (1 - p/2)), lty = 3, col = 'red', lwd = 3)
+  par(mfrow = c(1, 1))
+}
+plot.t(before$Disease.rate, after$Disease.rate)
+```
+
+The monthly deaths from disease are clustered at the low end of the histogram after March 1855. This indicates that indicates that the death rate was lower after the introduction of the Sanitation Officers. 
+
+But, is this reduction in death rate between these two time periods significant? Since there are so few data for each time period, a bootstrap resampling of the difference of the means is likely to be the best approach. The results of applying the bootstrap method are shown in the following figure.
+
+
+```{r}
+require(simpleboot)
+disease.boot = two.boot(after$Disease.rate, before$Disease.rate, mean, R = 100000)
+
+plot.diff <- function(a, cols = 'difference of means', nbins = 80, p = 0.05){
+  maxs = max(a)
+  mins = min(a)
+  breaks = seq(maxs, mins, length.out = (nbins + 1))
+  hist(a, breaks = breaks, main = paste('Histogram of', cols), xlab = cols)
+  abline(v = mean(a), lwd = 4, col = 'red')
+  abline(v = 0, lwd = 4, col = 'blue')
+  abline(v = quantile(a, probs = p/2), lty = 3, col = 'red', lwd = 3)  
+  abline(v = quantile(a, probs = (1 - p/2)), lty = 3, col = 'red', lwd = 3)
+}
+
+plot.diff(disease.boot$t)
+```
+
+You can see from the plot that there is a significant difference in means between the preventable deaths from disease before and after Sanitation Officers were introduced. The 0 value is well outside the 95% confidence interval.We can reject the null hypothesis that there is no difference in the mean rate of deaths.   
+
+Now compare the difference between deaths from other causes before and Sanitation Officers were introduced. The plots show the histograms of the death rate from other causes by month and the results of bootstrapping the difference in means. 
+
+
+```{r}
+plot.t(before$Other.rate, after$Other.rate)
+other.boot = two.boot(after$Other.rate, before$Other.rate, mean, R = 100000)
+plot.diff(other.boot$t)
+```
+
+The histogram shows that monthly deaths from other causes are clustered at the low end of the values after March 1855. You can see from the plot of bootstrapped mean differences that the 0 value is well outside the 95% confidence interval. We can reject the null hypothesis that there is no difference in the mean rate of deaths.
+
+Now compare the difference between deaths from combat wounds before and Sanitation Officers were introduced. The plots show the histograms of the death rate from combat wounds by month and the results of bootstrapping the difference in means. 
+ 
+
+
+```{r}
+plot.t(before$Wounds.rate, after$Wounds.rate)
+wound.boot = two.boot(after$Wounds.rate, before$Wounds.rate, mean, R = 100000)
+plot.diff(wound.boot$t)
+```
+
+The histogram shows that monthly deaths from combat wounds have similar distributions of values both before and after March 1855. You can see from the plot of bootstrapped mean difference that it is nearly at the 0 value well within the 95% confidence interval. We cannot reject the null hypothesis that there is no difference in the mean rate of deaths.
+
+## Conclusion
+
+These data clearly show that the introduction Sanitation Officers reduced the rate of preventable deaths, primarily from disease. The rate of death from other causes was also reduced after March 1855. 
